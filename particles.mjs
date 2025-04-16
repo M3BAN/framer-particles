@@ -18,50 +18,43 @@ export function FramerParticles({
             canvas.height = canvas.offsetHeight * DPR
             gl.viewport(0, 0, canvas.width, canvas.height)
             gl.clearColor(0, 0, 0, 1)
-            gl.clear(gl.COLOR_BUFFER_BIT)
 
             const [r, g, b] = hexToRgb(color)
 
             const vertexShader = gl.createShader(gl.VERTEX_SHADER)
-            gl.shaderSource(
-                vertexShader,
-                `
+            gl.shaderSource(vertexShader, `
                 precision mediump float;
                 attribute vec2 a_position;
                 uniform vec2 u_mouse;
                 uniform float u_radius;
                 uniform float u_pointSize;
-                varying float v_dist;
+                varying float v_alpha;
 
                 void main() {
                     vec2 diff = a_position - u_mouse;
                     float dist = length(diff);
-                    v_dist = dist;
 
-                    vec2 offset = normalize(diff) * smoothstep(u_radius, 0.0, dist) * 0.15;
+                    float disp = smoothstep(u_radius, 0.0, dist) * 0.3;
+                    vec2 offset = normalize(diff) * disp;
                     vec2 pos = a_position + offset;
 
                     gl_Position = vec4(pos, 0, 1);
                     gl_PointSize = u_pointSize * (1.0 - smoothstep(0.0, u_radius, dist));
+                    v_alpha = 1.0 - smoothstep(0.0, u_radius, dist);
                 }
-            `
-            )
+            `)
             gl.compileShader(vertexShader)
 
             const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER)
-            gl.shaderSource(
-                fragmentShader,
-                `
+            gl.shaderSource(fragmentShader, `
                 precision mediump float;
                 uniform vec3 u_color;
-                varying float v_dist;
+                varying float v_alpha;
 
                 void main() {
-                    float alpha = 1.0 - smoothstep(0.0, 1.0, v_dist);
-                    gl_FragColor = vec4(u_color, alpha);
+                    gl_FragColor = vec4(u_color, v_alpha);
                 }
-            `
-            )
+            `)
             gl.compileShader(fragmentShader)
 
             const program = gl.createProgram()
@@ -98,8 +91,6 @@ export function FramerParticles({
             let mouse = { x: 0, y: 0 }
             let targetMouse = { x: 0, y: 0 }
 
-            const lerp = (a, b, t) => a + (b - a) * t
-
             canvas.addEventListener("mousemove", (e) => {
                 const rect = canvas.getBoundingClientRect()
                 const x = ((e.clientX - rect.left) / rect.width) * 2 - 1
@@ -109,11 +100,10 @@ export function FramerParticles({
             })
 
             function render() {
+                mouse.x += (targetMouse.x - mouse.x) * 0.05
+                mouse.y += (targetMouse.y - mouse.y) * 0.05
+
                 gl.clear(gl.COLOR_BUFFER_BIT)
-
-                mouse.x = lerp(mouse.x, targetMouse.x, 0.05)
-                mouse.y = lerp(mouse.y, targetMouse.y, 0.05)
-
                 gl.uniform2f(u_mouse, mouse.x, mouse.y)
                 gl.drawArrays(gl.POINTS, 0, count)
 
@@ -133,8 +123,5 @@ export function FramerParticles({
 function hexToRgb(hex) {
     hex = hex.replace("#", "")
     const bigint = parseInt(hex, 16)
-    const r = (bigint >> 16) & 255
-    const g = (bigint >> 8) & 255
-    const b = bigint & 255
-    return [r, g, b]
+    return [(bigint >> 16) & 255, (bigint >> 8) & 255, bigint & 255]
 }
