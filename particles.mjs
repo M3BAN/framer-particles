@@ -1,49 +1,48 @@
 import { jsx } from "react/jsx-runtime"
 
-export function FramerParticles({ color = "#ffffff" }) {
+export function FramerParticles({
+  color = "#ffffff",
+  count = 1000,
+  radius = 0.3,
+  pointSize = 2,
+}) {
   return jsx("canvas", {
     ref: (canvas) => {
       if (!canvas) return
 
       const gl = canvas.getContext("webgl", { antialias: true })
-      if (!gl) return
-
-      // Retina scaling
       const dpr = window.devicePixelRatio || 1
       canvas.width = canvas.offsetWidth * dpr
       canvas.height = canvas.offsetHeight * dpr
       gl.viewport(0, 0, canvas.width, canvas.height)
       gl.clearColor(0, 0, 0, 1)
 
-      // Convert hex to RGB
       const [r, g, b] = hexToRgb(color)
 
-      // Vertex Shader
+      // SHADERS
       const vertexShader = gl.createShader(gl.VERTEX_SHADER)
       gl.shaderSource(vertexShader, `
         attribute vec2 a_position;
         uniform vec2 u_mouse;
-        uniform vec2 u_resolution;
+        uniform float u_radius;
 
         void main() {
           vec2 pos = a_position;
 
-          // Normalize mouse
-          vec2 mouse = (u_mouse / u_resolution) * 2.0 - 1.0;
-          mouse.y *= -1.0;
-
-          float dist = distance(pos, mouse);
-          float force = 0.02 / (dist + 0.05);
-          vec2 dir = normalize(pos - mouse);
-          pos += dir * force;
+          // Apply repulsion
+          vec2 diff = pos - u_mouse;
+          float dist = length(diff);
+          if (dist < u_radius) {
+            float force = (u_radius - dist) * 0.02;
+            pos += normalize(diff) * force;
+          }
 
           gl_Position = vec4(pos, 0.0, 1.0);
-          gl_PointSize = 3.0;
+          gl_PointSize = ${pointSize.toFixed(1)};
         }
       `)
       gl.compileShader(vertexShader)
 
-      // Fragment Shader
       const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER)
       gl.shaderSource(fragmentShader, `
         precision mediump float;
@@ -53,15 +52,12 @@ export function FramerParticles({ color = "#ffffff" }) {
       `)
       gl.compileShader(fragmentShader)
 
-      // Program
       const program = gl.createProgram()
       gl.attachShader(program, vertexShader)
       gl.attachShader(program, fragmentShader)
       gl.linkProgram(program)
       gl.useProgram(program)
 
-      // Particle positions
-      const count = 1000
       const positions = new Float32Array(count * 2)
       for (let i = 0; i < count; i++) {
         positions[i * 2] = Math.random() * 2 - 1
@@ -76,40 +72,33 @@ export function FramerParticles({ color = "#ffffff" }) {
       gl.enableVertexAttribArray(loc)
       gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0)
 
-      // Uniforms
       const u_mouse = gl.getUniformLocation(program, "u_mouse")
-      const u_resolution = gl.getUniformLocation(program, "u_resolution")
+      const u_radius = gl.getUniformLocation(program, "u_radius")
 
-      const resolution = [canvas.width, canvas.height]
-      gl.uniform2fv(u_resolution, resolution)
+      const mouse = [1000, 1000] // fuera de pantalla por defecto
 
-      // Mouse tracking
-      const mouse = [0, 0]
       canvas.addEventListener("mousemove", (e) => {
         const rect = canvas.getBoundingClientRect()
-        mouse[0] = (e.clientX - rect.left) * dpr
-        mouse[1] = (e.clientY - rect.top) * dpr
+        const x = ((e.clientX - rect.left) / rect.width) * 2 - 1
+        const y = -(((e.clientY - rect.top) / rect.height) * 2 - 1)
+        mouse[0] = x
+        mouse[1] = y
       })
 
-      // Draw loop
       function draw() {
         gl.clear(gl.COLOR_BUFFER_BIT)
         gl.uniform2fv(u_mouse, mouse)
+        gl.uniform1f(u_radius, radius)
         gl.drawArrays(gl.POINTS, 0, count)
         requestAnimationFrame(draw)
       }
 
       draw()
     },
-    style: {
-      width: "100%",
-      height: "100%",
-      display: "block",
-    },
+    style: { width: "100%", height: "100%", display: "block" },
   })
 }
 
-// Helper: convert hex color to 0–1 RGB
 function hexToRgb(hex) {
   hex = hex.replace("#", "")
   const bigint = parseInt(hex, 16)
